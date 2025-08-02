@@ -13,7 +13,7 @@ class BaseModel(models.Model):
 
 
 
-class User(AbstractUser):
+class User(AbstractUser,BaseModel):
     balance = models.FloatField(default=0.0)
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     email = models.EmailField(unique=True)
