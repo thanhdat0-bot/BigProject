@@ -2,6 +2,7 @@ from django.urls import path, include
 from . import views
 from rest_framework import routers
 
+from .views import RegisterView,LoginView
 
 router = routers.DefaultRouter()
 router.register('User', views.UserViewSet)
@@ -14,5 +15,7 @@ router.register('BudgetLimit', views.BudgetLimitViewSet)
 
 
 urlpatterns = [
-path('', include(router.urls))
+path('', include(router.urls)),
+path('register/', RegisterView.as_view(), name='register'),
+path('login/', LoginView.as_view(), name='login'),
 ]

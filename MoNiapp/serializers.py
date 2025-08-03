@@ -1,6 +1,32 @@
+from django.contrib.auth import get_user_model
+from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
 from .models import User, Category,Note,Transaction,BudgetLimit,Reminder
 
+User = get_user_model()
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ("username", "email", "password", "first_name", "last_name", "avatar")
+
+    def create(self, validated_data):
+        user = User(
+            username=validated_data["username"],
+            email=validated_data["email"],
+            first_name=validated_data.get("first_name", ""),
+            last_name=validated_data.get("last_name", ""),
+            avatar=validated_data.get("avatar", None),
+        )
+        user.set_password(validated_data["password"])
+        user.save()
+        return user
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)
 
 class UserSerializer(ModelSerializer):
     class Meta:
