@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.sites',
     'MoNiapp.apps.AppConfig',
     'rest_framework',
+    'drf_yasg',
 ]
 
 SITE_ID = 1
