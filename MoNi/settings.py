@@ -114,6 +114,19 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+            'description': "Nhập token dạng: **Bearer &lt;your_access_token&gt;** hoặc **Token &lt;your_token&gt;**",
+        }
+
+    },
+    'USE_SESSION_AUTH': False,  # Tắt/bật đăng nhập bằng username/password
+}
+
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 

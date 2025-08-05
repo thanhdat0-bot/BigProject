@@ -2,27 +2,30 @@ from django.contrib.auth import authenticate
 from django.shortcuts import render
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
+from rest_framework.generics import GenericAPIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import viewsets, permissions, status, generics, parsers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import User,Category,Transaction,Note,Reminder,BudgetLimit
-from .serializers import UserSerializer, TransactionSerializer, NoteSerializer, ReminderSerializer, \
-    BudgetlimitSerializer, CategorySerializer, RegisterSerializer, LoginSerializer
+from .serializers import  TransactionSerializer, NoteSerializer, ReminderSerializer, \
+    BudgetlimitSerializer, CategorySerializer, RegisterSerializer, LoginSerializer, ChangePasswordSerializer, \
+    UserUpdateSerializer, UserProfileSerializer
 
 
-class RegisterView(generics.CreateAPIView):
+class UserRegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
-class LoginView(generics.GenericAPIView):
+
+class UserLoginView(GenericAPIView):
     serializer_class = LoginSerializer
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
             username = serializer.validated_data["username"]
             password = serializer.validated_data["password"]
@@ -36,10 +39,42 @@ class LoginView(generics.GenericAPIView):
             return Response({"detail": "Invalid username or password."}, status=status.HTTP_401_UNAUTHORIZED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.filter(is_active=True)
-    serializer_class = UserSerializer
+class UserProfileView(GenericAPIView):
+    serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        serializer = UserProfileSerializer(request.user)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        serializer = UserUpdateSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request):
+        user = request.user
+        user.delete()
+        return Response({"detail": "User deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+
+class ChangePasswordView(GenericAPIView):
+    serializer_class = ChangePasswordSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request):
+        serializer = ChangePasswordSerializer(data=request.data)
+        user = request.user
+        if serializer.is_valid():
+            old_password = serializer.validated_data["old_password"]
+            new_password = serializer.validated_data["new_password"]
+            if not user.check_password(old_password):
+                return Response({"old_password": "Wrong password."}, status=status.HTTP_400_BAD_REQUEST)
+            user.set_password(new_password)
+            user.save()
+            return Response({"detail": "Password updated successfully."})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.filter(is_active=True)
