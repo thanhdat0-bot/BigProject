@@ -2,7 +2,8 @@ from django.urls import path, include
 from . import views
 from rest_framework import routers
 
-from .views import UserProfileView, ChangePasswordView, UserRegisterView, UserLoginView, finance_overview
+from .views import UserProfileView, ChangePasswordView, UserRegisterView, UserLoginView, finance_overview, \
+    weekly_summary
 
 router = routers.DefaultRouter()
 router.register('Category', views.CategoryViewSet)
@@ -20,4 +21,5 @@ urlpatterns = [
     path('user/profile/', UserProfileView.as_view(), name='user-profile'),
     path('user/change-password/', ChangePasswordView.as_view(), name='user-change-password'),
     path('statistics/overview/', finance_overview, name='finance-overview'),
+    path('statistics/weekly-summary/', weekly_summary, name='weekly-summary'),
 ]

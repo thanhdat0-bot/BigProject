@@ -48,6 +48,17 @@ class FinanceReportSerializer(serializers.Serializer):
     balance = serializers.FloatField()
     category_summary = serializers.ListField(child=serializers.DictField())
     budget_limit_exceeded = serializers.ListField(child=serializers.DictField())
+
+class CategoryStatSerializer(serializers.Serializer):
+    category = serializers.CharField()
+    expense = serializers.FloatField()
+    income = serializers.FloatField()
+
+class WeeklySummarySerializer(serializers.Serializer):
+    week = serializers.CharField()
+    total_income = serializers.FloatField()
+    total_expense = serializers.FloatField()
+    top_categories = CategoryStatSerializer(many=True)
 class CategorySerializer(ModelSerializer):
     class Meta:
         model = Category

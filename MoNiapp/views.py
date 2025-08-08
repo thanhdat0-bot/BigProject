@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.contrib.auth import authenticate
 from django.shortcuts import render
@@ -17,7 +17,7 @@ from . import models
 from .models import User,Category,Transaction,Note,Reminder,BudgetLimit
 from .serializers import TransactionSerializer, NoteSerializer, ReminderSerializer, \
     BudgetlimitSerializer, CategorySerializer, RegisterSerializer, LoginSerializer, ChangePasswordSerializer, \
-    UserUpdateSerializer, UserProfileSerializer, FinanceReportSerializer
+    UserUpdateSerializer, UserProfileSerializer, FinanceReportSerializer, WeeklySummarySerializer
 
 
 class UserRegisterView(generics.CreateAPIView):
@@ -103,6 +103,48 @@ class CategoryViewSet(viewsets.ModelViewSet):
         else:
             serializer.save(user=user, is_default=False)
 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def weekly_summary(request):
+    user = request.user
+    today = datetime.now()
+    # Tuần trước: từ thứ 2 tuần trước đến chủ nhật tuần trước
+    last_monday = today - timedelta(days=today.weekday() + 7)
+    last_sunday = last_monday + timedelta(days=6)
+
+    transactions = user.transactions.filter(
+        transaction_date__date__gte=last_monday.date(),
+        transaction_date__date__lte=last_sunday.date()
+    )
+
+    income = transactions.filter(type='income').aggregate(Sum('amount'))['amount__sum'] or 0
+    expense = transactions.filter(type='expense').aggregate(Sum('amount'))['amount__sum'] or 0
+
+    # Thống kê theo từng category
+    categories = user.categories.all()
+    category_stats = []
+    for cat in categories:
+        cat_expense = transactions.filter(type='expense', category=cat).aggregate(Sum('amount'))['amount__sum'] or 0
+        cat_income = transactions.filter(type='income', category=cat).aggregate(Sum('amount'))['amount__sum'] or 0
+        if cat_expense > 0 or cat_income > 0:
+            category_stats.append({
+                "category": cat.name,
+                "expense": cat_expense,
+                "income": cat_income,
+            })
+    # Sắp xếp category theo expense giảm dần, lấy top 3
+    category_stats = sorted(category_stats, key=lambda x: x['expense'], reverse=True)[:3]
+
+    result = {
+        "week": f"{last_monday.date()} - {last_sunday.date()}",
+        "total_income": income,
+        "total_expense": expense,
+        "top_categories": category_stats,
+    }
+    serializer = WeeklySummarySerializer(data=result)
+    serializer.is_valid(raise_exception=True)
+    return Response(serializer.data)
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.filter(is_active=True)
     serializer_class = TransactionSerializer
