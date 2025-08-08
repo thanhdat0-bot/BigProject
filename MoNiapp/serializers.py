@@ -42,6 +42,12 @@ class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(write_only=True)
 
+class FinanceReportSerializer(serializers.Serializer):
+    total_income = serializers.FloatField()
+    total_expense = serializers.FloatField()
+    balance = serializers.FloatField()
+    category_summary = serializers.ListField(child=serializers.DictField())
+    budget_limit_exceeded = serializers.ListField(child=serializers.DictField())
 class CategorySerializer(ModelSerializer):
     class Meta:
         model = Category

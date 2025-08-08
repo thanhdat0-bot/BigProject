@@ -1,17 +1,23 @@
+from datetime import datetime
+
 from django.contrib.auth import authenticate
 from django.shortcuts import render
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
+from rest_framework.decorators import permission_classes, api_view
 from rest_framework.generics import GenericAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import viewsets, permissions, status, generics, parsers
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
+from django.db.models import Sum
+from django.db.models import Q
+from . import models
 from .models import User,Category,Transaction,Note,Reminder,BudgetLimit
-from .serializers import  TransactionSerializer, NoteSerializer, ReminderSerializer, \
+from .serializers import TransactionSerializer, NoteSerializer, ReminderSerializer, \
     BudgetlimitSerializer, CategorySerializer, RegisterSerializer, LoginSerializer, ChangePasswordSerializer, \
-    UserUpdateSerializer, UserProfileSerializer
+    UserUpdateSerializer, UserProfileSerializer, FinanceReportSerializer
 
 
 class UserRegisterView(generics.CreateAPIView):
@@ -82,10 +88,20 @@ class CategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Category.objects.filter(user=self.request.user)
+        user = self.request.user
+        return Category.objects.filter(
+            Q(is_default=True) | Q(user=user),
+            is_active=True
+        )
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        user = self.request.user
+        is_admin = user.is_staff or user.is_superuser
+        is_default = self.request.data.get('is_default', False)
+        if is_admin and is_default:
+            serializer.save(user=None, is_default=True)
+        else:
+            serializer.save(user=user, is_default=False)
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.filter(is_active=True)
@@ -131,3 +147,63 @@ class BudgetLimitViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def finance_overview(request):
+    month = request.GET.get('month')  # VD: "2025-08"
+    user = request.user
+
+    # Lọc theo tháng nếu có truyền
+    if month:
+        year, mon = map(int, month.split('-'))
+        start = datetime(year, mon, 1)
+        if mon == 12:
+            end = datetime(year+1, 1, 1)
+        else:
+            end = datetime(year, mon+1, 1)
+        transactions = user.transactions.filter(transaction_date__gte=start, transaction_date__lt=end)
+        budget_limits = user.budget_limits.filter(month__year=year, month__month=mon)
+    else:
+        transactions = user.transactions.all()
+        budget_limits = user.budget_limits.all()
+
+    # Tổng thu, chi, số dư
+    income = transactions.filter(type='income').aggregate(Sum('amount'))['amount__sum'] or 0
+    expense = transactions.filter(type='expense').aggregate(Sum('amount'))['amount__sum'] or 0
+    balance = income - expense
+
+    # Thống kê từng Category
+    category_summary = []
+    categories = user.categories.all()
+    for cat in categories:
+        cat_expense = transactions.filter(type='expense', category=cat).aggregate(Sum('amount'))['amount__sum'] or 0
+        cat_income = transactions.filter(type='income', category=cat).aggregate(Sum('amount'))['amount__sum'] or 0
+        category_summary.append({
+            "category": cat.name,
+            "expense": cat_expense,
+            "income": cat_income,
+        })
+
+    # Kiểm tra vượt hạn mức
+    budget_limit_exceeded = []
+    for bl in budget_limits:
+        expense_in_limit = transactions.filter(type='expense', category=bl.category).aggregate(Sum('amount'))['amount__sum'] or 0
+        if expense_in_limit > bl.amount_limit:
+            budget_limit_exceeded.append({
+                "category": bl.category.name,
+                "limit": bl.amount_limit,
+                "actual_expense": expense_in_limit,
+            })
+
+    # Đóng gói dữ liệu trả về
+    data = {
+        "total_income": income,
+        "total_expense": expense,
+        "balance": balance,
+        "category_summary": category_summary,
+        "budget_limit_exceeded": budget_limit_exceeded,
+    }
+    serializer = FinanceReportSerializer(data=data)
+    serializer.is_valid(raise_exception=True)
+    return Response(serializer.data)
