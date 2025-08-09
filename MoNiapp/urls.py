@@ -23,4 +23,5 @@ urlpatterns = [
     path('statistics/overview/', finance_overview, name='finance-overview'),
     path('statistics/weekly-summary/', weekly_summary, name='weekly-summary'),
     path('statistics/monthly-report/', monthly_report, name='monthly-report'),
+
 ]

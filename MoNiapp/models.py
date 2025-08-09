@@ -77,6 +77,7 @@ class BudgetLimit(BaseModel):
     amount_limit = models.FloatField()
     notes = models.ManyToManyField(Note, blank=True, related_name='budget_limits')
     month = models.DateField(null=True, blank=True)
+    warning_threshold = models.FloatField(default=100)
 
     def __str__(self):
         return f"{self.user.username} - {self.category.name}: {self.amount_limit}"

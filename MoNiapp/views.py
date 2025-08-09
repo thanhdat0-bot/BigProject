@@ -1,5 +1,7 @@
-
+from calendar import month
 from datetime import datetime, timedelta
+from http.client import responses
+from logging import warning
 
 from django.contrib.auth import authenticate
 from django.shortcuts import render
@@ -15,7 +17,8 @@ from rest_framework.views import APIView
 from django.db.models import Sum
 from django.db.models import Q
 from six import raise_from
-from yaml import serialize
+from unicodedata import category
+from yaml import serialize, warnings
 
 from . import models
 from .models import User,Category,Transaction,Note,Reminder,BudgetLimit
@@ -218,7 +221,44 @@ class TransactionViewSet(viewsets.ModelViewSet):
         return Transaction.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)  # Tự gán user là user hiện tại
+        transaction = serializer.save(user=self.request.user)
+
+        user = self.request.user
+        category = transaction.category
+
+        if category and transaction.type == 'expense':
+            month_start = transaction.transaction_date.replace(day=1)
+
+            budget_limit = BudgetLimit.objects.filter(
+                user=user,category=category,month=month_start.date()
+            ).first()
+
+            warning = None
+            if budget_limit:
+                mon = month_start.month
+                year = month_start.year
+                if mon == 12:
+                    next_month = month_start.replace(year=year+1,month=1)
+                else:
+                    next_month = month_start.replace(month=mon+1)
+                expense = Transaction.objects.filter(
+                    user=user,category=category,type='expense',
+                    transaction_date__gte=month_start,
+                    transaction_date__lt=next_month
+                ).aggregate(Sum('amount'))['amount__sum'] or 0
+                percent = expense / budget_limit.amount_limit * 100 if budget_limit.amount_limit > 0 else 0
+                if percent >= budget_limit.warning_threshold:
+                    warning = f"chi tiêu danh mục {category.name} đã đạt {percent:.1f}% hạn mức!"
+            self.extra_warning = warning
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request,*args,**kwargs)
+        warning = getattr(self,"extra_warning", None)
+        if warning:
+            data = response.data.copy()
+            data['budget_warning'] = warning
+            response.data = data
+        return response
 
 class NoteViewSet(viewsets.ModelViewSet):
     queryset = Note.objects.filter(is_active=True)
@@ -247,12 +287,27 @@ class BudgetLimitViewSet(viewsets.ModelViewSet):
     serializer_class = BudgetlimitSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-
     def get_queryset(self):
         return BudgetLimit.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        month_str = self.request.data.get('month',None)
+        if month_str:
+            try:
+                if len(month_str) == 7:
+                    year, mon = map(int,month_str.split('-'))
+                    month = datetime(year,mon,1).date()
+                else:
+                    month = datetime.strptime(month_str,"%Y-%m-%d").date().replace(day=1)
+            except Exception:
+                now = datetime.now()
+                month = datetime(now.year,now.month, 1).date()
+        else:
+            now = datetime.now()
+            month = datetime(now.year,now.month,1).date()
+
+        serializer.save(user=self.request.user,month=month)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
