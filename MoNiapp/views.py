@@ -1,3 +1,4 @@
+
 from datetime import datetime, timedelta
 
 from django.contrib.auth import authenticate
@@ -13,6 +14,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Sum
 from django.db.models import Q
+from six import raise_from
+from yaml import serialize
+
 from . import models
 from .models import User,Category,Transaction,Note,Reminder,BudgetLimit
 from .serializers import TransactionSerializer, NoteSerializer, ReminderSerializer, \
@@ -145,6 +149,66 @@ def weekly_summary(request):
     serializer = WeeklySummarySerializer(data=result)
     serializer.is_valid(raise_exception=True)
     return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def monthly_report(request):
+    month = request.GET.get('month')
+    user = request.user
+
+    today = datetime.now()
+    if not month:
+        year = today.year
+        mon = today.month
+    else:
+        year,mon = map(int,month.split('-'))
+
+    start = datetime(year,mon,1)
+    if mon == 12:
+        end = datetime(year+1,1,1)
+    else:
+        end = datetime(year,mon+1,1)
+
+    transactions = user.transactions.filter(transaction_date__gte=start, transaction_date__lt=end)
+    budget_limits = user.budget_limits.filter(month__year=year,month__month=mon)
+
+    income = transactions.filter(type='income').aggregate(Sum('amount'))['amount__sum'] or 0
+    expense = transactions.filter(type='expense').aggregate(Sum('amount'))['amount__sum'] or 0
+    balance = income - expense
+
+    category_summary =[]
+    categories = user.categories.all()
+    for cat in categories:
+        cat_income = transactions.filter(type ='income').aggregate(Sum('amount'))['amount__sum'] or 0
+        cat_expense = transactions.filter(type='expense').aggregate(Sum('amount'))['amount__sum'] or 0
+        category_summary.append({
+            "category": cat.name,
+            "expense": cat_expense,
+            "income": cat_income,
+        })
+
+    budget_limit_exceeded = []
+    for bl in budget_limits:
+        expense_in_limit = transactions.filter(type='expense', category =bl.category).aggregate(Sum('amount'))['amount__sum'] or 0
+        if expense_in_limit > bl.amount_limit:
+            budget_limit_exceeded.append({
+                "category" : bl.category.name,
+                "limit" : bl.amount_limit,
+                "actual_expense": expense_in_limit,
+            })
+
+    data ={
+        "total_income":income,
+        "toatal_expense":expense,
+        "balance": balance,
+        "category_summary": category_summary,
+        "limit_exceeded": budget_limit_exceeded,
+    }
+
+    serializer = FinanceReportSerializer(data=data)
+    serializer.is_valid(raise_exception=True)
+    return Response(serializer.data)
+
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.filter(is_active=True)
     serializer_class = TransactionSerializer
@@ -154,7 +218,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         return Transaction.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        serializer.save(user=self.request.user)  # Tự gán user là user hiện tại
 
 class NoteViewSet(viewsets.ModelViewSet):
     queryset = Note.objects.filter(is_active=True)

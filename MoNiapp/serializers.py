@@ -68,18 +68,30 @@ class TransactionSerializer(ModelSerializer):
     class Meta:
         model = Transaction
         fields = '__all__'
+        extra_kwargs = {
+            'user': {'read_only': True},
+        }
 
 class BudgetlimitSerializer(ModelSerializer):
     class Meta:
         model = BudgetLimit
         fields = '__all__'
+        extra_kwargs = {
+            'user': {'read_only': True},
+        }
 
 class ReminderSerializer(ModelSerializer):
     class Meta:
         model = Reminder
         fields = '__all__'
+        extra_kwargs = {
+            'user': {'read_only': True},
+        }
 
 class NoteSerializer(ModelSerializer):
     class Meta:
         model = Note
         fields = '__all__'
+        extra_kwargs = {
+            'user': {'read_only': True},
+        }
