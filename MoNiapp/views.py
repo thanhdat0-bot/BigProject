@@ -31,7 +31,7 @@ class UserRegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
-    parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+    parser_classes = [parsers.JSONParser, parsers.MultiPartParser, parsers.FormParser]
 
 class UserLoginView(GenericAPIView):
     serializer_class = LoginSerializer
@@ -116,20 +116,20 @@ class CategoryViewSet(viewsets.ModelViewSet):
 def weekly_summary(request):
     user = request.user
     today = datetime.now()
-    # Tuần trước: từ thứ 2 tuần trước đến chủ nhật tuần trước
-    last_monday = today - timedelta(days=today.weekday() + 7)
-    last_sunday = last_monday + timedelta(days=6)
+    this_monday = today - timedelta(days=today.weekday())
+    this_sunday = this_monday + timedelta(days=6)
 
     transactions = user.transactions.filter(
-        transaction_date__date__gte=last_monday.date(),
-        transaction_date__date__lte=last_sunday.date()
+        transaction_date__date__gte=this_monday.date(),
+        transaction_date__date__lte=this_sunday.date()
     )
 
     income = transactions.filter(type='income').aggregate(Sum('amount'))['amount__sum'] or 0
     expense = transactions.filter(type='expense').aggregate(Sum('amount'))['amount__sum'] or 0
 
     # Thống kê theo từng category
-    categories = user.categories.all()
+    category_ids = transactions.values_list("category", flat=True).distinct()
+    categories = Category.objects.filter(id__in=category_ids)
     category_stats = []
     for cat in categories:
         cat_expense = transactions.filter(type='expense', category=cat).aggregate(Sum('amount'))['amount__sum'] or 0
@@ -144,7 +144,7 @@ def weekly_summary(request):
     category_stats = sorted(category_stats, key=lambda x: x['expense'], reverse=True)[:3]
 
     result = {
-        "week": f"{last_monday.date()} - {last_sunday.date()}",
+        "week": f"{this_monday.date()} - {this_sunday.date()}",
         "total_income": income,
         "total_expense": expense,
         "top_categories": category_stats,
@@ -202,10 +202,10 @@ def monthly_report(request):
 
     data ={
         "total_income":income,
-        "toatal_expense":expense,
+        "total_expense":expense,
         "balance": balance,
         "category_summary": category_summary,
-        "limit_exceeded": budget_limit_exceeded,
+        "budget_limit_exceeded": budget_limit_exceeded,
     }
 
     serializer = FinanceReportSerializer(data=data)
@@ -259,6 +259,34 @@ class TransactionViewSet(viewsets.ModelViewSet):
             data['budget_warning'] = warning
             response.data = data
         return response
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def search_transactions(request):
+    user = request.user
+    category_id = request.GET.get('category_id')
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    min_amount = request.GET.get('min_amount')
+    max_amount = request.GET.get('max_amount')
+
+    queryset = user.transactions.all()
+
+    if category_id:
+        queryset = queryset.filter(category_id=category_id)
+    if start_date:
+        queryset = queryset.filter(transaction_date__gte=start_date)
+    if end_date:
+        queryset = queryset.filter(transaction_date__lte=end_date)
+    if min_amount:
+        queryset = queryset.filter(amount__gte=min_amount)
+    if max_amount:
+        queryset = queryset.filter(amount__lte=max_amount)
+
+    queryset = queryset.order_by('-transaction_date')
+
+    serializer = TransactionSerializer(queryset,many=True)
+    return Response(serializer.data)
 
 class NoteViewSet(viewsets.ModelViewSet):
     queryset = Note.objects.filter(is_active=True)
@@ -335,8 +363,10 @@ def finance_overview(request):
     balance = income - expense
 
     # Thống kê từng Category
+    category_ids = transactions.values_list('category', flat=True).distinct()
+    categories = Category.objects.filter(id__in=category_ids)
     category_summary = []
-    categories = user.categories.all()
+
     for cat in categories:
         cat_expense = transactions.filter(type='expense', category=cat).aggregate(Sum('amount'))['amount__sum'] or 0
         cat_income = transactions.filter(type='income', category=cat).aggregate(Sum('amount'))['amount__sum'] or 0

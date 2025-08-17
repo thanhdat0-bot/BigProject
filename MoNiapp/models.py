@@ -81,3 +81,6 @@ class BudgetLimit(BaseModel):
 
     def __str__(self):
         return f"{self.user.username} - {self.category.name}: {self.amount_limit}"
+
+    class Meta:
+        unique_together = ('user', 'category', 'month')

@@ -13,14 +13,14 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = ("username", "email", "password", "first_name", "last_name", "avatar")
 
+    def validate(self, attrs):
+        if attrs['password'] != attrs['confirm_password']:
+            raise serializers.ValidationError({'confirm_password': "Mật khẩu nhập lại không khớp."})
+        return attrs
+
     def create(self, validated_data):
-        avatar = validated_data.pop("avatar", None)
-        user = User(**validated_data)
-        user.set_password(validated_data["password"])
-        if avatar:
-            user.avatar = avatar
-        user.save()
-        return user
+        validated_data.pop('confirm_password')
+        return User.objects.create_user(**validated_data)
 
 class UserProfileSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(required=False, allow_null=True)
