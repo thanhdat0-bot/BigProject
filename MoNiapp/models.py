@@ -1,3 +1,4 @@
+from cloudinary.models import CloudinaryField
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
@@ -14,9 +15,13 @@ class BaseModel(models.Model):
 
 
 class User(AbstractUser,BaseModel):
-    balance = models.FloatField(default=0.0)
-    avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
+    avatar = CloudinaryField(null=True, blank=True, folder='user_avatar')
     email = models.EmailField(unique=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    gender = models.CharField(max_length=10, choices=[('male', 'Nam'), ('female', 'Nữ'), ('other', 'Khác')], null=True, blank=True)
+    phone = models.CharField(max_length=15, null=True, blank=True)
+    address = models.CharField(max_length=255, null=True, blank=True)
+    bio = models.TextField(null=True, blank=True)
 
     def __str__(self):
         return self.username

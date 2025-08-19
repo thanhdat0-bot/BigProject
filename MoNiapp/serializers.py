@@ -7,11 +7,13 @@ User = get_user_model()
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True, required=True)
     avatar = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = User
-        fields = ("username", "email", "password", "first_name", "last_name", "avatar")
+        fields = ("username", "email", "password", "confirm_password", "first_name", "last_name", "avatar",
+                  "date_of_birth", "gender", "phone", "address", "bio")
 
     def validate(self, attrs):
         if attrs['password'] != attrs['confirm_password']:
@@ -26,13 +28,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(required=False, allow_null=True)
     class Meta:
         model = User
-        fields = ("id", "username", "email", "first_name", "last_name", "avatar", "balance")
+        fields = ("id", "username", "email", "first_name", "last_name", "avatar",
+                  "date_of_birth", "gender", "phone", "address", "bio")
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(required=False, allow_null=True)
     class Meta:
         model = User
-        fields = ("email", "first_name", "last_name", "avatar")
+        fields = ( "username", "email", "first_name", "last_name", "avatar",
+                  "date_of_birth", "gender", "phone", "address", "bio")
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)

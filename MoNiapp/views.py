@@ -55,6 +55,7 @@ class UserLoginView(GenericAPIView):
 class UserProfileView(GenericAPIView):
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [parsers.JSONParser, parsers.MultiPartParser, parsers.FormParser]
 
     def get(self, request):
         serializer = UserProfileSerializer(request.user)
