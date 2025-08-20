@@ -24,19 +24,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('confirm_password')
         return User.objects.create_user(**validated_data)
 
-class UserProfileSerializer(serializers.ModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(required=False, allow_null=True)
     class Meta:
         model = User
-        fields = ("id", "username", "email", "first_name", "last_name", "avatar",
-                  "date_of_birth", "gender", "phone", "address", "bio")
-
-class UserUpdateSerializer(serializers.ModelSerializer):
-    avatar = serializers.ImageField(required=False, allow_null=True)
-    class Meta:
-        model = User
-        fields = ( "username", "email", "first_name", "last_name", "avatar",
-                  "date_of_birth", "gender", "phone", "address", "bio")
+        fields = (
+            "id", "username", "email", "first_name", "last_name", "avatar",
+            "date_of_birth", "gender", "phone", "address", "bio"
+        )
+        read_only_fields = ("id",)
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)
@@ -53,6 +49,8 @@ class FinanceReportSerializer(serializers.Serializer):
     category_summary = serializers.ListField(child=serializers.DictField())
     budget_limit_exceeded = serializers.ListField(child=serializers.DictField())
 
+
+
 class CategoryStatSerializer(serializers.Serializer):
     category = serializers.CharField()
     expense = serializers.FloatField()
@@ -63,7 +61,26 @@ class WeeklySummarySerializer(serializers.Serializer):
     total_income = serializers.FloatField()
     total_expense = serializers.FloatField()
     top_categories = CategoryStatSerializer(many=True)
+
+class TransactionShortSerializer(serializers.ModelSerializer):
+    note = serializers.SerializerMethodField()
+    date = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Transaction
+        fields = ['id', 'amount', 'type', 'note', 'date']
+
+    def get_note(self, obj):
+        # Trả về note đầu tiên hoặc chuỗi rỗng nếu không có note
+        return obj.notes.first().title if obj.notes.exists() else ""
+
+    def get_date(self, obj):
+        # Format ngày cho đẹp, bạn có thể tuỳ chỉnh
+        return obj.transaction_date.strftime("%Y-%m-%d %H:%M")
+
 class CategorySerializer(ModelSerializer):
+    transactions = TransactionShortSerializer(many=True, read_only=True)
+
     class Meta:
         model = Category
         fields = '__all__'

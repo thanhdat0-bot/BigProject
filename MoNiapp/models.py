@@ -57,7 +57,7 @@ class Transaction(BaseModel):
 
     amount = models.FloatField()
     type = models.CharField(max_length=10, choices=TRANSACTION_TYPES)
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='transactions')
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, null=True, related_name='transactions')
     notes = models.ManyToManyField(Note, blank=True, related_name='transactions')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
     transaction_date = models.DateTimeField(default=timezone.now)
