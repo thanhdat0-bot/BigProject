@@ -48,7 +48,7 @@ class FinanceReportSerializer(serializers.Serializer):
     balance = serializers.FloatField()
     category_summary = serializers.ListField(child=serializers.DictField())
     budget_limit_exceeded = serializers.ListField(child=serializers.DictField())
-
+    daily_expense = serializers.ListField(child=serializers.DictField(), required=False)
 
 
 class CategoryStatSerializer(serializers.Serializer):
@@ -62,36 +62,31 @@ class WeeklySummarySerializer(serializers.Serializer):
     total_expense = serializers.FloatField()
     top_categories = CategoryStatSerializer(many=True)
 
-class TransactionShortSerializer(serializers.ModelSerializer):
-    note = serializers.SerializerMethodField()
+class TransactionSerializer(serializers.ModelSerializer):
     date = serializers.SerializerMethodField()
+    category_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Transaction
-        fields = ['id', 'amount', 'type', 'note', 'date']
+        fields = ['id', 'amount', 'type', 'note', 'date', 'category', 'category_name']
 
     def get_note(self, obj):
-        # Trả về note đầu tiên hoặc chuỗi rỗng nếu không có note
         return obj.notes.first().title if obj.notes.exists() else ""
 
     def get_date(self, obj):
-        # Format ngày cho đẹp, bạn có thể tuỳ chỉnh
         return obj.transaction_date.strftime("%Y-%m-%d %H:%M")
 
+    def get_category_name(self, obj):
+        return obj.category.name if obj.category else None
+
+
 class CategorySerializer(ModelSerializer):
-    transactions = TransactionShortSerializer(many=True, read_only=True)
+    transactions = TransactionSerializer(many=True, read_only=True)
 
     class Meta:
         model = Category
         fields = '__all__'
 
-class TransactionSerializer(ModelSerializer):
-    class Meta:
-        model = Transaction
-        fields = '__all__'
-        extra_kwargs = {
-            'user': {'read_only': True},
-        }
 
 class BudgetlimitSerializer(ModelSerializer):
     class Meta:
