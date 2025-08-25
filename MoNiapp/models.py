@@ -6,8 +6,8 @@ from django.utils import timezone
 
 class BaseModel(models.Model):
     is_active = models.BooleanField(default=True)
-    created_date = models.DateTimeField(auto_now_add=True)
-    updated_date = models.DateTimeField(auto_now=True)
+    created_date = models.DateField(auto_now_add=True)
+    updated_date = models.DateField(auto_now=True)
 
     class Meta:
         abstract = True
@@ -61,7 +61,7 @@ class Transaction(BaseModel):
     category = models.ForeignKey(Category, on_delete=models.CASCADE, null=True, related_name='transactions')
     note = models.CharField(max_length=255, blank=True, null=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
-    transaction_date = models.DateTimeField(default=timezone.now)
+    transaction_date = models.DateField(default=timezone.now)
 
     def __str__(self):
         return f"{self.user.username} - {self.type} - {self.amount}"
@@ -71,7 +71,7 @@ class Reminder(BaseModel):
     title = models.CharField(max_length=100)
     description = models.TextField()
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reminders')
-    remind_at = models.DateTimeField(null=True, blank=True)
+    remind_at = models.DateField(null=True, blank=True)
 
     def __str__(self):
         return self.title
@@ -81,7 +81,7 @@ class BudgetLimit(BaseModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='budget_limits')
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='budget_limits')
     amount_limit = models.FloatField()
-    notes = models.ManyToManyField(Note, blank=True, related_name='budget_limits')
+    note = models.CharField(max_length=255, blank=True, null=True)
     month = models.DateField(null=True, blank=True)
     warning_threshold = models.FloatField(default=100)
 

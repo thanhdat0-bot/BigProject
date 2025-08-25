@@ -3,7 +3,7 @@ from . import views
 from rest_framework import routers
 
 from .views import UserProfileView, ChangePasswordView, UserRegisterView, UserLoginView, finance_overview, \
-    weekly_summary, monthly_report
+    weekly_summary, monthly_report, filter_transactions
 
 router = routers.DefaultRouter()
 router.register('Category', views.CategoryViewSet)
@@ -23,6 +23,6 @@ urlpatterns = [
     path('statistics/overview/', finance_overview, name='finance-overview'),
     path('statistics/weekly-summary/', weekly_summary, name='weekly-summary'),
     path('statistics/monthly-report/', monthly_report, name='monthly-report'),
-
+    path('transactions/filter/', filter_transactions, name='filter-transactions'),
 
 ]

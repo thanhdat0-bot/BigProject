@@ -23,7 +23,7 @@ from yaml import serialize, warnings
 from collections import defaultdict
 
 from django.utils import timezone
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
 from . import models
 from .models import User, Category, Transaction, Note, Reminder, BudgetLimit
 from .serializers import TransactionSerializer, NoteSerializer, ReminderSerializer, \
@@ -128,22 +128,12 @@ def weekly_summary(request):
     # Nhận param date (format: YYYY-MM-DD)
     date_str = request.GET.get("date")
     if date_str:
-        today = datetime.strptime(date_str, "%Y-%m-%d")
-        # Luôn make_aware theo UTC
-        if timezone.is_naive(today):
-            today = timezone.make_aware(today, timezone=dt_timezone.utc)
-        else:
-            today = today.astimezone(dt_timezone.utc)
+        today = datetime.strptime(date_str, "%Y-%m-%d").date()
     else:
-        today = timezone.now()  # luôn trả về UTC-aware
-
-    # Lấy thứ 2 đầu tuần (UTC)
+        today = timezone.localdate()
+    # Lấy thứ 2 đầu tuần (date)
     this_monday = today - timedelta(days=today.weekday())
-    this_monday = this_monday.replace(hour=0, minute=0, second=0, microsecond=0)
     this_sunday = this_monday + timedelta(days=6)
-    this_sunday = this_sunday.replace(hour=23, minute=59, second=59, microsecond=999999)
-
-    print(f"DEBUG: Filter tuần UTC: {this_monday} - {this_sunday}")
 
     transactions = user.transactions.filter(
         transaction_date__gte=this_monday,
@@ -173,7 +163,7 @@ def weekly_summary(request):
     category_stats = sorted(category_stats, key=lambda x: x['expense'], reverse=True)[:3]
 
     result = {
-        "week": f"{this_monday.date()} - {this_sunday.date()}",
+        "week": f"{this_monday} - {this_sunday}",
         "total_income": income,
         "total_expense": expense,
         "top_categories": category_stats,
@@ -188,18 +178,18 @@ def monthly_report(request):
     month = request.GET.get('month')
     user = request.user
 
-    today = timezone.localtime()
+    today = timezone.localdate()
     if not month:
         year = today.year
         mon = today.month
     else:
         year, mon = map(int, month.split('-'))
 
-    start = timezone.make_aware(datetime(year, mon, 1))
+    start = datetime(year, mon, 1).date()
     if mon == 12:
-        end = timezone.make_aware(datetime(year + 1, 1, 1))
+        end = datetime(year + 1, 1, 1).date()
     else:
-        end = timezone.make_aware(datetime(year, mon + 1, 1))
+        end = datetime(year, mon + 1, 1).date()
 
     transactions = user.transactions.filter(transaction_date__gte=start, transaction_date__lt=end)
     budget_limits = user.budget_limits.filter(month__year=year, month__month=mon)
@@ -225,7 +215,7 @@ def monthly_report(request):
         # Chỉ xét hạn mức với category hợp lệ (thuộc user hoặc mặc định)
         if bl.category.is_default or bl.category.user == user:
             expense_in_limit = transactions.filter(type='expense', category=bl.category).aggregate(Sum('amount'))['amount__sum'] or 0
-            if expense_in_limit >= bl.amount_limit:  # Sửa > thành >=
+            if expense_in_limit >= bl.amount_limit:
                 budget_limit_exceeded.append({
                     "category": bl.category.name,
                     "limit": bl.amount_limit,
@@ -265,11 +255,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
         if category and transaction.type == 'expense':
             month_start = transaction.transaction_date.replace(day=1)
-            if timezone.is_naive(month_start):
-                month_start = timezone.make_aware(month_start)
-
             budget_limit = BudgetLimit.objects.filter(
-                user=user, category=category, month=month_start.date()
+                user=user, category=category, month=month_start
             ).first()
 
             warning = None
@@ -280,8 +267,6 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     next_month = month_start.replace(year=year + 1, month=1)
                 else:
                     next_month = month_start.replace(month=mon + 1)
-                if timezone.is_naive(next_month):
-                    next_month = timezone.make_aware(next_month)
                 expense = Transaction.objects.filter(
                     user=user, category=category, type='expense',
                     transaction_date__gte=month_start,
@@ -304,9 +289,70 @@ class TransactionViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         user = self.request.user
         category = serializer.validated_data.get("category")
-        if category and not (category.is_default or category.user == user):
-            raise ValidationError("Bạn không được phép sử dụng danh mục này.")
-        serializer.save(user=user)
+        transaction = serializer.save(user=user)
+
+        # TÍNH LẠI WARNING Y NHƯ PHẦN TẠO MỚI
+        warning = None
+        if category and transaction.type == 'expense':
+            month_start = transaction.transaction_date.replace(day=1)
+            budget_limit = BudgetLimit.objects.filter(
+                user=user, category=category, month=month_start
+            ).first()
+            if budget_limit:
+                mon = month_start.month
+                year = month_start.year
+                if mon == 12:
+                    next_month = month_start.replace(year=year + 1, month=1)
+                else:
+                    next_month = month_start.replace(month=mon + 1)
+                expense = Transaction.objects.filter(
+                    user=user, category=category, type='expense',
+                    transaction_date__gte=month_start,
+                    transaction_date__lt=next_month
+                ).aggregate(Sum('amount'))['amount__sum'] or 0
+                percent = expense / budget_limit.amount_limit * 100 if budget_limit.amount_limit > 0 else 0
+                if percent >= budget_limit.warning_threshold:
+                    warning = f"chi tiêu danh mục {category.name} đã đạt {percent:.1f}% hạn mức!"
+        self.extra_warning = warning
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        warning = getattr(self, "extra_warning", None)
+        if warning:
+            data = response.data.copy()
+            data['budget_warning'] = warning
+            response.data = data
+        return response
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def filter_transactions(request):
+    user = request.user
+    qs = user.transactions.all()
+
+    category = request.GET.get("category")
+    min_amount = request.GET.get("min_amount")
+    max_amount = request.GET.get("max_amount")
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+    tx_type = request.GET.get("type")
+
+    if category:
+        qs = qs.filter(category_id=category)
+    if tx_type:
+        qs = qs.filter(type=tx_type)
+    if min_amount:
+        qs = qs.filter(amount__gte=float(min_amount))
+    if max_amount:
+        qs = qs.filter(amount__lte=float(max_amount))
+    if start_date:
+        qs = qs.filter(transaction_date__gte=start_date)
+    if end_date:
+        qs = qs.filter(transaction_date__lte=end_date)
+
+    qs = qs.order_by("-transaction_date", "-id")
+    serializer = TransactionSerializer(qs, many=True)
+    return Response(serializer.data)
 
 class NoteViewSet(viewsets.ModelViewSet):
     queryset = Note.objects.filter(is_active=True)
@@ -356,11 +402,11 @@ class BudgetLimitViewSet(viewsets.ModelViewSet):
                 else:
                     month = datetime.strptime(month_str, "%Y-%m-%d").date().replace(day=1)
             except Exception:
-                now = timezone.localtime()
-                month = now.date().replace(day=1)
+                now = timezone.localdate()
+                month = now.replace(day=1)
         else:
-            now = timezone.localtime()
-            month = now.date().replace(day=1)
+            now = timezone.localdate()
+            month = now.replace(day=1)
         if BudgetLimit.objects.filter(user=user, category=category, month=month).exists():
             raise ValidationError("Đã có hạn mức cho danh mục này trong tháng này. Vui lòng sửa hạn mức cũ.")
 
@@ -369,7 +415,6 @@ class BudgetLimitViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         user = self.request.user
         category = serializer.validated_data.get("category")
-        # Kiểm tra quyền sở hữu category khi cập nhật
         if category and not (category.is_default or category.user == user):
             raise ValidationError("Bạn không được phép đặt hạn mức cho danh mục này.")
         serializer.save(user=user)
@@ -384,11 +429,11 @@ def finance_overview(request):
     # Lọc theo tháng nếu có truyền
     if month:
         year, mon = map(int, month.split('-'))
-        start = timezone.make_aware(datetime(year, mon, 1))
+        start = datetime(year, mon, 1).date()
         if mon == 12:
-            end = timezone.make_aware(datetime(year + 1, 1, 1))
+            end = datetime(year + 1, 1, 1).date()
         else:
-            end = timezone.make_aware(datetime(year, mon + 1, 1))
+            end = datetime(year, mon + 1, 1).date()
         transactions = user.transactions.filter(transaction_date__gte=start, transaction_date__lt=end)
         budget_limits = user.budget_limits.filter(month__year=year, month__month=mon)
     else:
@@ -424,7 +469,7 @@ def finance_overview(request):
         if (bl.category.is_default or bl.category.user == user):  # Chỉ kiểm tra hạn mức với category hợp lệ
             expense_in_limit = transactions.filter(type='expense', category=bl.category).aggregate(Sum('amount'))[
                                    'amount__sum'] or 0
-            if expense_in_limit >= bl.amount_limit:  # Sửa > thành >=
+            if expense_in_limit >= bl.amount_limit:
                 budget_limit_exceeded.append({
                     "category": bl.category.name,
                     "limit": bl.amount_limit,

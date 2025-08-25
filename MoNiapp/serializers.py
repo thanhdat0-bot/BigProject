@@ -63,12 +63,11 @@ class WeeklySummarySerializer(serializers.Serializer):
     top_categories = CategoryStatSerializer(many=True)
 
 class TransactionSerializer(serializers.ModelSerializer):
-    date = serializers.SerializerMethodField()
     category_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Transaction
-        fields = ['id', 'amount', 'type', 'note', 'date', 'category', 'category_name']
+        fields = ['id', 'amount', 'type', 'note', 'transaction_date', 'category', 'category_name']
 
     def get_note(self, obj):
         return obj.notes.first().title if obj.notes.exists() else ""
