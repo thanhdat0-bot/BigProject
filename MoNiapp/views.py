@@ -25,10 +25,11 @@ from collections import defaultdict
 from django.utils import timezone
 from datetime import datetime, timedelta
 from . import models
-from .models import User, Category, Transaction, Note, Reminder, BudgetLimit
+from .models import User, Category, Transaction, Note, Reminder, BudgetLimit, EmailOTP
 from .serializers import TransactionSerializer, NoteSerializer, ReminderSerializer, \
     BudgetlimitSerializer, CategorySerializer, RegisterSerializer, LoginSerializer, ChangePasswordSerializer, \
     FinanceReportSerializer, WeeklySummarySerializer, UserSerializer
+from .utils import create_and_send_otp
 
 
 class UserRegisterView(generics.CreateAPIView):
@@ -79,6 +80,36 @@ class UserProfileView(GenericAPIView):
         user.delete()
         return Response({"detail": "User deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
 
+class SendRegisterOTPView(APIView):
+    def post(self, request):
+        email = request.data.get('email')
+        if User.objects.filter(email=email).exists():
+            return Response({'detail': "Email đã được sử dụng."}, status=400)
+        create_and_send_otp(email, 'register')
+        return Response({'detail': "OTP đã được gửi tới email."})
+
+class SendForgotPasswordOTPView(APIView):
+    def post(self, request):
+        email = request.data.get('email')
+        if not User.objects.filter(email=email).exists():
+            return Response({'detail': "Không tìm thấy tài khoản với email này."}, status=400)
+        create_and_send_otp(email, 'forgot_password')
+        return Response({'detail': "OTP đã được gửi tới email."})
+
+class VerifyOTPView(APIView):
+    def post(self, request):
+        email = request.data.get('email')
+        code = request.data.get('otp')
+        otp_type = request.data.get('otp_type')
+        try:
+            otp_obj = EmailOTP.objects.filter(email=email, code=code, otp_type=otp_type, is_used=False).latest('created_at')
+        except EmailOTP.DoesNotExist:
+            return Response({'detail': 'OTP không đúng.'}, status=400)
+        if otp_obj.is_expired():
+            return Response({'detail': 'OTP đã hết hạn.'}, status=400)
+        otp_obj.is_used = True
+        otp_obj.save()
+        return Response({'detail': 'Xác thực OTP thành công.'})
 
 class ChangePasswordView(GenericAPIView):
     serializer_class = ChangePasswordSerializer
@@ -423,10 +454,10 @@ class BudgetLimitViewSet(viewsets.ModelViewSet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def finance_overview(request):
-    month = request.GET.get('month')  # VD: "2025-08"
+    month = request.GET.get('month')
     user = request.user
 
-    # Lọc theo tháng nếu có truyền
+
     if month:
         year, mon = map(int, month.split('-'))
         start = datetime(year, mon, 1).date()
@@ -440,12 +471,11 @@ def finance_overview(request):
         transactions = user.transactions.all()
         budget_limits = user.budget_limits.all()
 
-    # Tổng thu, chi, số dư
+
     income = transactions.filter(type='income').aggregate(Sum('amount'))['amount__sum'] or 0
     expense = transactions.filter(type='expense').aggregate(Sum('amount'))['amount__sum'] or 0
     balance = income - expense
 
-    # Thống kê từng Category (chỉ lấy category default hoặc thuộc user)
     category_ids = transactions.values_list('category', flat=True).distinct()
     categories = Category.objects.filter(
         id__in=category_ids
@@ -463,7 +493,7 @@ def finance_overview(request):
             "income": cat_income,
         })
 
-    # Kiểm tra vượt hạn mức
+
     budget_limit_exceeded = []
     for bl in budget_limits:
         if (bl.category.is_default or bl.category.user == user):  # Chỉ kiểm tra hạn mức với category hợp lệ
@@ -481,13 +511,13 @@ def finance_overview(request):
         day_str = tx.transaction_date.strftime('%Y-%m-%d')
         daily_expense_dict[day_str] += tx.amount
 
-    # Tạo list daily_expense theo thứ tự ngày tăng dần
+
     daily_expense_list = [
         {"date": day, "expense": amount}
         for day, amount in sorted(daily_expense_dict.items())
     ]
 
-    # Đóng gói dữ liệu trả về
+
     data = {
         "total_income": income,
         "total_expense": expense,

@@ -26,6 +26,19 @@ class User(AbstractUser,BaseModel):
     def __str__(self):
         return self.username
 
+class EmailOTP(models.Model):
+    email = models.EmailField()
+    code = models.CharField(max_length=10)
+    otp_type = models.CharField(max_length=20, choices=(
+        ('register', 'Register'),
+        ('forgot_password', 'Forgot Password'),
+    ))
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
 
 class Note(BaseModel):
     title = models.CharField(max_length=100)
