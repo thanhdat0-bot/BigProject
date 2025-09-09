@@ -1,0 +1,325 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<style>
+    .overview-card {
+        background: #222;
+        border-radius: 10px;
+        padding: 24px 32px;
+        margin-bottom: 32px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        border: 1px solid #444;
+        max-width: 480px;
+    }
+    .overview-card ul {
+        list-style: none;
+        padding-left: 0;
+    }
+    .overview-card li {
+        margin: 12px 0;
+        font-size: 1.15rem;
+        font-weight: 500;
+        color: #fafafa;
+        display: flex;
+        align-items: center;
+    }
+    .overview-card li b {
+        color: #90cdf4;
+        min-width: 200px;
+        font-weight: 600;
+        margin-right: 10px;
+    }
+    .statistics-controls {
+        margin-bottom: 24px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .statistics-controls label {
+        font-size: 1.06rem;
+        color: #fafafa;
+        margin-right: 4px;
+        font-weight: 500;
+    }
+    .statistics-controls select {
+        padding: 5px 8px;
+        border-radius: 6px;
+        background: #222;
+        color: #fafafa;
+        border: 1px solid #666;
+        font-size: 1.05rem;
+        margin-right: 8px;
+    }
+    h1, h2 {
+        color: #fafafa;
+        margin-top: 12px;
+        margin-bottom: 18px;
+        font-weight: 700;
+    }
+    hr {
+        border: none;
+        border-top: 1px solid #444;
+        margin: 28px 0;
+    }
+    .chart-block {
+        margin-bottom: 36px;
+        background: #181818;
+        border-radius: 8px;
+        padding: 16px 18px;
+        box-shadow: 0 1px 6px rgba(0,0,0,0.10);
+        border: 1px solid #333;
+    }
+    .chart-block h2 {
+        margin-top: 0;
+        margin-bottom: 14px;
+        font-size: 1.15rem;
+        color: #90cdf4;
+        font-weight: 600;
+    }
+    @media (max-width: 600px) {
+        .overview-card, .chart-block {
+            padding: 12px 6px;
+            max-width: 100%;
+        }
+        .statistics-controls {
+            flex-direction: column;
+            gap: 6px;
+        }
+    }
+</style>
+
+<h1>System Statistics</h1>
+
+<form method="get" class="statistics-controls" id="statistics-form">
+    <label for="month">Select Month:</label>
+    <select name="month" id="month" onchange="document.getElementById('statistics-form').submit();">
+        {% for m in month_list %}
+            <option value="{{ m|stringformat:'02d' }}" {% if m == month %}selected{% endif %}>{{ m|stringformat:'02d' }}</option>
+        {% endfor %}
+    </select>
+    <label for="year">Year:</label>
+    <select name="year" id="year" onchange="document.getElementById('statistics-form').submit();">
+        {% for y in year_list %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+    </select>
+</form>
+
+<div class="overview-card">
+    <div style="font-size:1.1rem; color:#90cdf4; margin-bottom:12px;">
+        Month Selected: {{ month|stringformat:"02d" }}/{{ year }}
+    </div>
+    <ul>
+        <li><b>Total users:</b> {{ total_users }}</li>
+        <li><b>Total transactions this month:</b> {{ total_transactions }}</li>
+        <li><b>Total income this month:</b> {{ total_income }}</li>
+        <li><b>Total expense this month:</b> {{ total_expense }}</li>
+        <li><b>New users this month:</b> {{ new_users }}</li>
+    </ul>
+</div>
+
+<hr>
+
+<div class="chart-block">
+    <h2>Total users (by month in year)</h2>
+    <canvas id="userCountChart" width="800" height="300"></canvas>
+</div>
+<div class="chart-block">
+    <h2>Transactions in selected month (by day)</h2>
+    <canvas id="transactionCountChart" width="800" height="300"></canvas>
+</div>
+<div class="chart-block">
+    <h2>Income & Expense in selected month (by day)</h2>
+    <canvas id="incomeExpenseChart" width="800" height="300"></canvas>
+</div>
+<div class="chart-block">
+    <h2>New users in selected month (by day)</h2>
+    <canvas id="newUsersChart" width="800" height="300"></canvas>
+</div>
+<div class="chart-block">
+    <h2>Transactions by default system categories</h2>
+    <canvas id="categoryChart" width="800" height="300"></canvas>
+</div>
+<div class="chart-block">
+    <h2>Top users by transaction count (this month)</h2>
+    <canvas id="topUserChart" width="800" height="300"></canvas>
+</div>
+<div class="chart-block">
+    <h2>Transactions per month in selected year</h2>
+    <canvas id="monthlyTransactionChart" width="800" height="300"></canvas>
+</div>
+<div class="chart-block">
+    <h2>Income/Expense ratio this month</h2>
+    <canvas id="pieChart" width="400" height="400"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Total users by month
+    new Chart(document.getElementById('userCountChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: {{ user_count_labels|safe }},
+            datasets: [{
+                label: 'Total users',
+                data: {{ user_count_by_month|safe }},
+                borderColor: 'blue',
+                backgroundColor: 'rgba(0,0,255,0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'Total users by month' }
+            }
+        }
+    });
+    // Transactions by day
+    new Chart(document.getElementById('transactionCountChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: {{ transaction_count_labels|safe }},
+            datasets: [{
+                label: 'Transactions',
+                data: {{ transaction_count_by_day|safe }},
+                backgroundColor: 'rgba(0,255,255,0.4)',
+                borderColor: 'cyan',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'Transactions by day in month' }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+    // Income/Expense by day
+    new Chart(document.getElementById('incomeExpenseChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: {{ income_expense_labels|safe }},
+            datasets: [
+                {
+                    label: 'Income',
+                    data: {{ income_data|safe }},
+                    borderColor: 'green',
+                    backgroundColor: 'rgba(0,255,0,0.1)',
+                    fill: false,
+                    tension: 0.3
+                },
+                {
+                    label: 'Expense',
+                    data: {{ expense_data|safe }},
+                    borderColor: 'red',
+                    backgroundColor: 'rgba(255,0,0,0.1)',
+                    fill: false,
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'Income & Expense by day in month' }
+            }
+        }
+    });
+    // New users by day
+    new Chart(document.getElementById('newUsersChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: {{ new_users_labels|safe }},
+            datasets: [{
+                label: 'New users',
+                data: {{ new_users_by_day|safe }},
+                backgroundColor: 'rgba(255,165,0,0.4)',
+                borderColor: 'orange',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'New users by day in month' }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+    // Transactions by default category
+    new Chart(document.getElementById('categoryChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: {{ category_labels|safe }},
+            datasets: [{
+                label: 'Transactions',
+                data: {{ category_transaction_counts|safe }},
+                backgroundColor: 'rgba(100,150,255,0.4)',
+                borderColor: 'blue',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            plugins: { title: { display: true, text: 'Transactions by default system categories' } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+    // Top users by transaction count
+    new Chart(document.getElementById('topUserChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: {{ top_user_labels|safe }},
+            datasets: [{
+                label: 'Transactions',
+                data: {{ top_user_values|safe }},
+                backgroundColor: 'rgba(255,200,0,0.4)',
+                borderColor: 'orange',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            plugins: { title: { display: true, text: 'Top users by transaction count' } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+    // Transactions per month in year
+    new Chart(document.getElementById('monthlyTransactionChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: {{ monthly_transaction_labels|safe }},
+            datasets: [{
+                label: 'Transactions',
+                data: {{ monthly_transaction_counts|safe }},
+                borderColor: 'purple',
+                backgroundColor: 'rgba(150,0,255,0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            plugins: { title: { display: true, text: 'Transactions per month in year' } }
+        }
+    });
+    // Income/Expense ratio pie chart
+    new Chart(document.getElementById('pieChart').getContext('2d'), {
+        type: 'pie',
+        data: {
+            labels: {{ pie_labels|safe }},
+            datasets: [{
+                data: {{ pie_data|safe }},
+                backgroundColor: ['#4caf50', '#f44336'],
+            }]
+        },
+        options: {
+            plugins: { title: { display: true, text: 'Income/Expense ratio this month' } }
+        }
+    });
+</script>
+{% endblock %}
