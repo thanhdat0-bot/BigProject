@@ -1,7 +1,10 @@
 from cloudinary.models import CloudinaryField
+
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
+
+
 
 
 class BaseModel(models.Model):
@@ -25,6 +28,12 @@ class User(AbstractUser,BaseModel):
 
     def __str__(self):
         return self.username
+
+class StatisticsLink(User):
+    class Meta:
+        proxy = True
+        verbose_name = "System Statistics"
+        verbose_name_plural = "System Statistics"
 
 class EmailOTP(models.Model):
     email = models.EmailField()
