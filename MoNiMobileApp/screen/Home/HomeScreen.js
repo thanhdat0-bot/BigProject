@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
     marginBottom: 6
   },
   summaryLabel: { fontSize: 14, color: '#FFD600', marginBottom: 2, fontWeight: 'bold', letterSpacing: 0.5 },
-  summaryValue: { fontSize: 20, fontWeight: 'bold', marginTop: 3 },
+  summaryValue: { fontSize: 16, fontWeight: 'bold', marginTop: 3, textAlign: 'center' },
 
   // So sánh
   compareRowWrapper: {
@@ -704,7 +704,7 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   compareLabel: { fontSize: 12, fontWeight: 'bold', letterSpacing: 0.5 },
-  compareDelta: { fontSize: 14, fontWeight: 'bold' },
+  compareDelta: { fontSize: 16, fontWeight: 'bold' },
   comparePlaceholder: { color: '#FFD60077', fontStyle: 'italic', marginTop: 4 },
 
   funcButtonSection: { width: '100%', marginBottom: 9, marginTop: 6 },

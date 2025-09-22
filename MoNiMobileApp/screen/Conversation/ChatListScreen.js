@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { db } from "../../configs/firebaseConfig";
-import { collection, query, getDocs, orderBy, limit, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, getDocs, orderBy, limit, doc, setDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authApi, endpoints } from '../../configs/Apis';
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -42,6 +42,20 @@ const fetchReceiverProfile = async (receiverId) => {
   }
 };
 
+// Hàm xóa đoạn chat 1 phía (xóa document chat và messages)
+const deleteChatRoom = async (userId, otherId, onDone) => {
+  const convId = makeConversationId(userId, otherId);
+  // Xóa tất cả messages
+  const msgsRef = collection(db, "chats", convId, "messages");
+  const msgsSnap = await getDocs(msgsRef);
+  for (const msgDoc of msgsSnap.docs) {
+    await deleteDoc(doc(db, "chats", convId, "messages", msgDoc.id));
+  }
+  // Xóa document phòng chat
+  await deleteDoc(doc(db, "chats", convId));
+  if (onDone) onDone();
+};
+
 export default function ChatListScreen() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -54,6 +68,7 @@ export default function ChatListScreen() {
   const [newReceiverId, setNewReceiverId] = useState("");
   const [profile, setProfile] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [deletingConv, setDeletingConv] = useState(null);
 
   useEffect(() => {
     let isActive = true;
@@ -75,7 +90,6 @@ export default function ChatListScreen() {
     return () => { isActive = false; };
   }, []);
 
-  // Setup header: title + nút "+"
   useLayoutEffect(() => {
     navigation.setOptions({
       title: "Đoạn chat",
@@ -98,7 +112,7 @@ export default function ChatListScreen() {
     return unsubscribe;
   }, [userId, navigation]);
 
-  // FIX: lấy avatar người nhận từ tin nhắn gần nhất của receiver, không phải tin nhắn cuối cùng
+  // Lấy avatar người nhận từ tin nhắn gần nhất của receiver
   const fetchConversations = async () => {
     if (!userId) {
       Alert.alert("Lỗi", "Không có thông tin tài khoản! Vui lòng đăng nhập lại.");
@@ -126,24 +140,18 @@ export default function ChatListScreen() {
         let lastMsg = "";
         let lastTime = null;
         let latestReceiverMsgAvatar = null;
-        let latestReceiverMsgTime = null;
         let firstMsgLoaded = false;
 
         if (msgSnap.docs.length > 0) {
           for (let msgDoc of msgSnap.docs) {
             const data = msgDoc.data();
-
-            // Lấy tin nhắn mới nhất để hiển thị nội dung và thời gian
             if (!firstMsgLoaded) {
               lastMsg = data.text || "";
               lastTime = data.timestamp?.toDate ? data.timestamp.toDate() : null;
               firstMsgLoaded = true;
             }
-
-            // Nếu là tin nhắn của receiver thì lưu lại avatar và thời gian
             if (normalizeUserId(data.senderId) === otherId && data.avatarUrl && !latestReceiverMsgAvatar) {
               latestReceiverMsgAvatar = data.avatarUrl;
-              latestReceiverMsgTime = data.timestamp?.toDate ? data.timestamp.toDate() : null;
             }
           }
           if (latestReceiverMsgAvatar) {
@@ -213,6 +221,25 @@ export default function ChatListScreen() {
     setNewReceiverId("");
   };
 
+  const handleDeleteConversation = (receiverId) => {
+    Alert.alert(
+      "Xóa đoạn chat?",
+      `Bạn có chắc muốn xóa đoạn chat với ${receiverId}?`,
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Xóa",
+          style: "destructive",
+          onPress: async () => {
+            setDeletingConv(receiverId);
+            await deleteChatRoom(userId, receiverId, fetchConversations);
+            setDeletingConv(null);
+          }
+        }
+      ]
+    );
+  };
+
   if (loadingProfile) {
     return <ActivityIndicator style={{ flex: 1 }} size="large" color="#FFD600" />;
   }
@@ -230,28 +257,37 @@ export default function ChatListScreen() {
         data={sortedConversations}
         keyExtractor={item => item.convId}
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.row}
-            onPress={() => navigation.navigate("ChatScreen", {
-              senderId: userId,
-              receiverId: item.receiver.id,
-              receiverName: item.receiver.name,
-              receiverAvatar: item.receiver.avatar,
-              senderAvatar: profile?.avatar || DEFAULT_AVATAR
-            })}
-            activeOpacity={0.8}
-          >
-            <Image source={{ uri: item.receiver.avatar }} style={styles.avatar} />
-            <View style={styles.rowContent}>
-              <View style={styles.rowTop}>
-                <Text style={styles.name}>{item.receiver.name}</Text>
-                <Text style={styles.time}>
-                  {item.lastTime ? item.lastTime.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : ""}
-                </Text>
+          <View style={styles.rowWrap}>
+            <TouchableOpacity
+              style={styles.row}
+              onPress={() => navigation.navigate("ChatScreen", {
+                senderId: userId,
+                receiverId: item.receiver.id,
+                receiverName: item.receiver.name,
+                receiverAvatar: item.receiver.avatar,
+                senderAvatar: profile?.avatar || DEFAULT_AVATAR
+              })}
+              activeOpacity={0.8}
+            >
+              <Image source={{ uri: item.receiver.avatar }} style={styles.avatar} />
+              <View style={styles.rowContent}>
+                <View style={styles.rowTop}>
+                  <Text style={styles.name}>{item.receiver.name}</Text>
+                  <Text style={styles.time}>
+                    {item.lastTime ? item.lastTime.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : ""}
+                  </Text>
+                </View>
+                <Text style={styles.lastMsg} numberOfLines={1}>{item.lastMsg}</Text>
               </View>
-              <Text style={styles.lastMsg} numberOfLines={1}>{item.lastMsg}</Text>
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.deleteBtn}
+              onPress={() => handleDeleteConversation(item.receiver.id)}
+              disabled={deletingConv === item.receiver.id}
+            >
+              <Icon name="delete" size={22} color="#FFD600" />
+            </TouchableOpacity>
+          </View>
         )}
         ListEmptyComponent={<Text style={styles.emptyList}>Chưa có đoạn chat nào</Text>}
         contentContainerStyle={styles.listContent}
@@ -308,9 +344,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingBottom: 16
   },
+  rowWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 2
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
+    flex: 1,
     paddingVertical: 14,
     paddingHorizontal: 10,
     borderRadius: 18,
@@ -321,6 +363,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.09,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 }
+  },
+  deleteBtn: {
+    padding: 7,
+    marginLeft: 2
   },
   avatar: {
     width: 46,

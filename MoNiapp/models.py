@@ -25,6 +25,7 @@ class User(AbstractUser,BaseModel):
     phone = models.CharField(max_length=15, null=True, blank=True)
     address = models.CharField(max_length=255, null=True, blank=True)
     bio = models.TextField(null=True, blank=True)
+    credit_score = models.IntegerField(default=0)
 
     def __str__(self):
         return self.username

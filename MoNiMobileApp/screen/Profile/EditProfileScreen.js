@@ -53,14 +53,22 @@ export default function EditProfileScreen({ route, navigation }) {
   };
 
   const onSave = async () => {
+    // Kiểm tra số điện thoại: chỉ được nhập số (hoặc để trống)
+    if (phone && phone.trim() && !/^\d+$/.test(phone.trim())) {
+      showAlert("Lỗi", "Số điện thoại chỉ được nhập số.");
+      return;
+    }
+
     try {
       const token = await AsyncStorage.getItem('access_token');
       let formData = new FormData();
-      formData.append('first_name', first_name);
-      formData.append('last_name', last_name);
-      formData.append('phone', phone);
-      formData.append('address', address);
-      formData.append('bio', bio);
+
+      // Nếu trường nào KHÔNG rỗng, mới gửi lên server để cập nhật
+      if (first_name.trim()) formData.append('first_name', first_name.trim());
+      if (last_name.trim()) formData.append('last_name', last_name.trim());
+      if (phone.trim()) formData.append('phone', phone.trim());
+      if (address.trim()) formData.append('address', address.trim());
+      if (bio.trim()) formData.append('bio', bio.trim());
 
       if (localAvatar) {
         const fileName = localAvatar.split('/').pop();

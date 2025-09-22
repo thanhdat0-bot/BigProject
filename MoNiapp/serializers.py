@@ -26,13 +26,18 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(required=False, allow_null=True)
+    credit_score = serializers.SerializerMethodField()
     class Meta:
         model = User
         fields = (
             "id", "username", "email", "first_name", "last_name", "avatar",
-            "date_of_birth", "gender", "phone", "address", "bio"
+            "date_of_birth", "gender", "phone", "address", "bio", "credit_score"
         )
         read_only_fields = ("id",)
+
+    def get_credit_score(self, obj):
+        from .utils import calculate_credit_score
+        return calculate_credit_score(obj)
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)
@@ -82,10 +87,19 @@ class TransactionSerializer(serializers.ModelSerializer):
 
 class CategorySerializer(ModelSerializer):
     transactions = TransactionSerializer(many=True, read_only=True)
+    limit = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
         fields = '__all__'
+
+    def get_limit(self, obj):
+        user = self.context.get('request').user
+        from django.utils import timezone
+        now = timezone.localdate()
+        month_start = now.replace(day=1)
+        bl = obj.budget_limits.filter(user=user, month=month_start).first()
+        return bl.amount_limit if bl else None
 
 
 class BudgetlimitSerializer(ModelSerializer):

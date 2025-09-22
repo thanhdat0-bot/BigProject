@@ -1,11 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios, { endpoints } from '../../configs/Apis';
 import { Ionicons } from '@expo/vector-icons';
 import { Modal, Portal, Button } from "react-native-paper";
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import * as AuthSession from 'expo-auth-session';
 
-// Custom ModalAlert component
+import { getAuth, signInWithCredential, GoogleAuthProvider } from "firebase/auth";
+import { app as firebaseApp } from '../../configs/firebaseConfig'; 
+
+WebBrowser.maybeCompleteAuthSession();
+
 function ModalAlert({ visible, onDismiss, title, message }) {
   return (
     <Portal>
@@ -26,29 +33,62 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Custom alert modal state
+
+  const FIREBASE_WEB_CLIENT_ID = '256465007843-vimgd67cigu5aivtg3g05pffru67q138.apps.googleusercontent.com';
+
+
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    clientId: FIREBASE_WEB_CLIENT_ID,
+    scopes: ['profile', 'email'],
+    redirectUri: AuthSession.makeRedirectUri({ useProxy: true }),
+  });
+
   const [modalAlert, setModalAlert] = useState({ visible: false, title: '', message: '' });
   const showAlert = (title, message) => setModalAlert({ visible: true, title, message });
   const hideAlert = () => setModalAlert({ visible: false, title: '', message: '' });
 
-const handleLogin = async () => {
-  try {
-    const res = await axios.post(endpoints.login, { username, password });
-    const token = res.data.access;
-    await AsyncStorage.setItem('access_token', token);
-    await AsyncStorage.setItem('user_id', username.trim()); 
-    navigation.replace('MainApp');
-  } catch (err) {
-    showAlert(
-      'Lỗi đăng nhập',
-      err.response?.data?.detail || 'Tên đăng nhập hoặc mật khẩu không đúng'
-    );
-  }
-};
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { authentication } = response;
+      const credential = GoogleAuthProvider.credential(authentication.idToken, authentication.accessToken);
+      const auth = getAuth(firebaseApp);
 
-const handleForgotPassword = () => {
-  navigation.navigate('ForgotPassword');
-};
+      signInWithCredential(auth, credential)
+        .then(async (userCredential) => {
+          await AsyncStorage.setItem('google_access_token', authentication.accessToken);
+          await AsyncStorage.setItem('firebase_uid', userCredential.user.uid);
+          navigation.replace('MainApp');
+        })
+        .catch((error) => {
+          showAlert('Lỗi đăng nhập Google', error.message);
+        });
+    } else if (response?.type === 'error') {
+      showAlert('Lỗi đăng nhập Google', 'Không thể đăng nhập bằng Google');
+    }
+  }, [response, navigation]);
+
+  const handleLogin = async () => {
+    try {
+      const res = await axios.post(endpoints.login, { username, password });
+      const token = res.data.access;
+      await AsyncStorage.setItem('access_token', token);
+      await AsyncStorage.setItem('user_id', username.trim());
+      navigation.replace('MainApp');
+    } catch (err) {
+      showAlert(
+        'Lỗi đăng nhập',
+        err.response?.data?.detail || 'Tên đăng nhập hoặc mật khẩu không đúng'
+      );
+    }
+  };
+
+  const handleForgotPassword = () => {
+    navigation.navigate('ForgotPassword');
+  };
+
+  const handleGoogleLogin = () => {
+    promptAsync();
+  };
 
   return (
     <View style={styles.container}>
@@ -96,6 +136,15 @@ const handleForgotPassword = () => {
         </TouchableOpacity>
         <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Register')}>
           <Text style={styles.secondaryButtonText}>Đăng ký tài khoản mới</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, { flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 16 }]}
+          onPress={handleGoogleLogin}
+          disabled={!request}
+        >
+          <Ionicons name="logo-google" size={22} color="#fff" />
+          <Text style={styles.buttonText}>Đăng nhập với Google</Text>
         </TouchableOpacity>
       </View>
       <ModalAlert

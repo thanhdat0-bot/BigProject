@@ -69,7 +69,15 @@ class UserProfileView(GenericAPIView):
         return Response(serializer.data)
 
     def patch(self, request):
-        serializer = UserSerializer(request.user, data=request.data, partial=True)
+        data = request.data.copy()
+        for key in list(data.keys()):
+            if isinstance(data[key], str) and not data[key].strip():
+                data.pop(key)
+        phone = data.get('phone')
+        if phone and not phone.isdigit():
+            return Response({"phone": "Số điện thoại chỉ được chứa chữ số."}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = UserSerializer(request.user, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
@@ -133,6 +141,11 @@ class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.filter(is_active=True)
     serializer_class = CategorySerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context.update({"request": self.request})
+        return context
 
     def get_queryset(self):
         user = self.request.user

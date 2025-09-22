@@ -5,7 +5,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { authApi, endpoints } from '../../configs/Apis';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-
 export default function ProfileScreen({ navigation }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -75,6 +74,18 @@ export default function ProfileScreen({ navigation }) {
           />
           <Text style={styles.name}>{profile.first_name || ''} {profile.last_name || ''}</Text>
           <Text style={styles.username}>@{profile.username}</Text>
+
+          {/* 
+            ĐOẠN CHÚ THÍCH THÊM VÀO ĐỂ HIỂN THỊ ĐIỂM TÍN DỤNG
+            Sử dụng trường profile.credit_score do API trả về, có thể style lại cho nổi bật.
+          */}
+          <View style={{ alignItems: "center", marginTop: 10 }}>
+            <Icon name="star-circle-outline" size={35} color="#FFD600" />
+            <Text style={{ color: "#FFD600", fontSize: 21, fontWeight: 'bold', marginTop: 7 }}>
+              Điểm tín dụng: {profile.credit_score}
+            </Text>
+          </View>
+          {/* Kết thúc đoạn chú thích hiển thị điểm tín dụng */}
         </View>
         <View style={styles.infoCard}>
           <InfoRow icon="email-outline" label="Email" value={profile.email} />
